@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "com.troller2705.ftb_subchunks.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "ftb_subchunks.refmap.json",
+  "client": [
+    "MixinChunkButton",
+    "MixinZoneInfoComponent",
+    "MixinRegionMapPanel",
+    "MixinChunkScreen",
+    "MixinChunkScreenPanel",
+    "ChunkScreenPanelAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
