@@ -1,1 +1,2 @@
 /ftbchunks info
+/save-all

@@ -3,35 +3,47 @@ package com.troller2705.ftb_subchunks.data;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class SubGroupData {
-    private final List<SubZone> zones = new ArrayList<>();
+    // Maps a vanilla ChunkPos (long) to its assigned SubZone
+    private final Map<Long, SubZone> chunkZones = new HashMap<>();
 
-    // Constructor 1: Empty
     public SubGroupData() {}
 
-    // Constructor 2: Loading from NBT
     public SubGroupData(CompoundTag tag) {
-        ListTag list = tag.getList("Zones", Tag.TAG_COMPOUND);
+        ListTag list = tag.getList("ChunkZones", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
-            zones.add(new SubZone(list.getCompound(i)));
+            CompoundTag entry = list.getCompound(i);
+            long pos = entry.getLong("ChunkPos");
+            SubZone zone = new SubZone(entry.getCompound("ZoneData"));
+            chunkZones.put(pos, zone);
         }
     }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         ListTag list = new ListTag();
-        for (SubZone zone : zones) {
-            list.add(zone.save());
+        for (Map.Entry<Long, SubZone> entry : chunkZones.entrySet()) {
+            CompoundTag entryTag = new CompoundTag();
+            entryTag.putLong("ChunkPos", entry.getKey());
+            entryTag.put("ZoneData", entry.getValue().save());
+            list.add(entryTag);
         }
-        tag.put("Zones", list);
+        tag.put("ChunkZones", list);
         return tag;
     }
 
-    public List<SubZone> getZones() { return zones; }
+    public SubZone getZoneForChunk(long chunkPos) {
+        return chunkZones.get(chunkPos);
+    }
 
-    public void addZone(SubZone zone) { zones.add(zone); }
+    public void setChunkZone(long chunkPos, SubZone zone) {
+        chunkZones.put(chunkPos, zone);
+    }
+
+    public Map<Long, SubZone> getChunkZones() {
+        return chunkZones;
+    }
 }
