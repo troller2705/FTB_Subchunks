@@ -65,41 +65,48 @@ public class NetworkHandler {
     }
 
     @SuppressWarnings("resource")
-    private static void handleSync(final SyncSubGroupsPayload payload, final IPayloadContext context) {
+    public static void handleSync(final SyncSubGroupsPayload payload, final net.neoforged.neoforge.network.handling.IPayloadContext context) {
         context.enqueueWork(() -> {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc.level == null) return;
-
             SubZone incomingZone = new SubZone(payload.zoneData());
-
-            // NEW: Automatically add this brush to the Client Palette so they can equip it later!
-            com.troller2705.ftb_subchunks.client.SubGroupClientUI.BRUSH_PALETTE.putIfAbsent(incomingZone.getName(), incomingZone);
 
             dev.ftb.mods.ftbchunks.client.map.MapManager manager = dev.ftb.mods.ftbchunks.client.map.MapManager.getInstance().orElse(null);
             if (manager == null) return;
 
-            dev.ftb.mods.ftbchunks.client.map.MapDimension dimension = manager.getDimension(mc.level.dimension());
+            // Get the client player's current dimension
+            var clientLevel = net.minecraft.client.Minecraft.getInstance().level;
+            if (clientLevel == null) return;
+
+            dev.ftb.mods.ftbchunks.client.map.MapDimension dimension = manager.getDimension(clientLevel.dimension());
             if (dimension == null) return;
 
-            for (long posLong : payload.chunks()) {
-                net.minecraft.world.level.ChunkPos pos = new net.minecraft.world.level.ChunkPos(posLong);
+            for (long chunkPosLong : payload.chunks()) {
+                // FIX: Decode the long back into a vanilla ChunkPos to get the X and Z
+                net.minecraft.world.level.ChunkPos cp = new net.minecraft.world.level.ChunkPos(chunkPosLong);
 
-                // 1. Get FTB's exact MapChunk
-                dev.ftb.mods.ftbchunks.client.map.MapChunk mapChunk = dimension.getRegion(dev.ftb.mods.ftblibrary.math.XZ.regionFromChunk(pos.x, pos.z))
-                        .getDataBlocking().getChunk(dev.ftb.mods.ftblibrary.math.XZ.of(pos.x, pos.z));
+                // Use cp.x and cp.z instead of pos.x and pos.z
+                dev.ftb.mods.ftbchunks.client.map.MapRegion region = dimension.getRegion(dev.ftb.mods.ftblibrary.math.XZ.regionFromChunk(cp.x, cp.z));
+                if (region != null) {
+                    dev.ftb.mods.ftbchunks.client.map.MapChunk mapChunk = region.getDataBlocking().getChunk(dev.ftb.mods.ftblibrary.math.XZ.of(cp.x, cp.z));
 
-                if (mapChunk != null) {
-                    // 2. Safely cast it to our Duck-Typed interface and set the native data!
-                    if (mapChunk instanceof ISubGroupMapChunk subGroupChunk) {
-                        subGroupChunk.ftbsubchunks$setSubGroupName(incomingZone.getName());
+                    if (mapChunk != null) {
+
+                        // STOP THE PALETTE LEAK
+                        dev.ftb.mods.ftbteams.api.Team myTeam = dev.ftb.mods.ftbteams.api.FTBTeamsAPI.api().getClientManager().selfTeam();
+                        if (myTeam != null && mapChunk.getTeam() != null) {
+                            if (myTeam.getId().equals(mapChunk.getTeam().get().getId())) {
+                                // Only learn the brush if WE own this chunk!
+                                com.troller2705.ftb_subchunks.client.SubGroupClientUI.BRUSH_PALETTE.putIfAbsent(incomingZone.getName(), incomingZone);
+                            }
+                        }
+
+                        // Set the map data so the Mixin can read it
+                        if (mapChunk instanceof com.troller2705.ftb_subchunks.api.ISubGroupMapChunk subGroupChunk) {
+                            subGroupChunk.ftbsubchunks$setSubGroupName(incomingZone.getName());
+                        }
+
+                        // FORCE VISUAL SYNC
+                        region.update(true);
                     }
-                }
-            }
-
-            // Force redraw the Large Map if it is open
-            if (mc.screen instanceof dev.ftb.mods.ftblibrary.ui.ScreenWrapper sw) {
-                if (sw.getGui() instanceof dev.ftb.mods.ftbchunks.client.gui.LargeMapScreen lms) {
-                    lms.refreshWidgets();
                 }
             }
         });

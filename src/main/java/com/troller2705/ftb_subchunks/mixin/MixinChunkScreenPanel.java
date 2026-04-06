@@ -1,9 +1,6 @@
 package com.troller2705.ftb_subchunks.mixin;
 
-import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
 import dev.ftb.mods.ftbchunks.client.gui.ChunkScreenPanel;
-import dev.ftb.mods.ftblibrary.math.ChunkDimPos;
 import dev.ftb.mods.ftblibrary.math.XZ;
 import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
 import net.minecraft.client.Minecraft;
@@ -12,9 +9,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.troller2705.ftb_subchunks.client.SubGroupClientUI;
-import com.troller2705.ftb_subchunks.data.SubZone;
 import com.troller2705.ftb_subchunks.network.SaveSubGroupPayload;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -36,16 +31,32 @@ public abstract class MixinChunkScreenPanel {
                 Minecraft mc = Minecraft.getInstance();
                 List<Long> validChunks = new ArrayList<>();
 
-                // FIX: Only apply the Paintbrush to chunks your team owns
-                for (XZ xz : selected) {
-                    ChunkDimPos cdp = new ChunkDimPos(mc.level.dimension(), xz.x(), xz.z());
-                    ClaimedChunk claimed = FTBChunksAPI.api().getManager().getChunk(cdp);
+                // --- NEW CLIENT-SAFE LOGIC ---
+                // Grab the client's local cache of their Team and the Map
+                dev.ftb.mods.ftbteams.api.Team myTeam = dev.ftb.mods.ftbteams.api.FTBTeamsAPI.api().getClientManager().selfTeam();
+                dev.ftb.mods.ftbchunks.client.map.MapManager manager = dev.ftb.mods.ftbchunks.client.map.MapManager.getInstance().orElse(null);
 
-                    if (claimed != null && claimed.getTeamData() != null && claimed.getTeamData().isTeamMember(mc.player.getUUID())) {
-                        validChunks.add(ChunkPos.asLong(xz.x(), xz.z()));
+                if (myTeam != null && manager != null && mc.level != null) {
+                    dev.ftb.mods.ftbchunks.client.map.MapDimension dimension = manager.getDimension(mc.level.dimension());
+
+                    if (dimension != null) {
+                        for (XZ xz : selected) {
+                            dev.ftb.mods.ftbchunks.client.map.MapRegion region = dimension.getRegion(XZ.regionFromChunk(xz.x(), xz.z()));
+                            if (region != null) {
+                                // Retrieve the visual map chunk data
+                                dev.ftb.mods.ftbchunks.client.map.MapChunk mapChunk = region.getDataBlocking().getChunk(xz);
+
+                                // Verify the map chunk has our team ID attached to it before painting!
+                                if (mapChunk != null && mapChunk.getTeam() != null) {
+                                    if (mapChunk.getTeam().get().getTeamId().equals(myTeam.getId())) {
+                                        validChunks.add(ChunkPos.asLong(xz.x(), xz.z()));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-
+                // --- END CLIENT-SAFE LOGIC ---
 
                 if (!validChunks.isEmpty()) {
                     long[] chunkArray = new long[validChunks.size()];
@@ -53,7 +64,6 @@ public abstract class MixinChunkScreenPanel {
                         chunkArray[i] = validChunks.get(i);
                     }
 
-                    // FIX: Send the FULL activePaintbrush (with its permissions) to the server!
                     PacketDistributor.sendToServer(new SaveSubGroupPayload(chunkArray, SubGroupClientUI.activePaintbrush.save()));
                 }
 
