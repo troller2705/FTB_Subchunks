@@ -1,100 +1,82 @@
 package com.troller2705.ftb_subchunks.client;
 
-import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
-import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
+import dev.ftb.mods.ftblibrary.config.BooleanConfig;
 import dev.ftb.mods.ftblibrary.config.ConfigGroup;
 import dev.ftb.mods.ftblibrary.config.EnumConfig;
 import dev.ftb.mods.ftblibrary.config.StringConfig;
 import dev.ftb.mods.ftblibrary.config.ui.EditConfigScreen;
-import dev.ftb.mods.ftblibrary.math.ChunkDimPos;
-import dev.ftb.mods.ftblibrary.math.XZ;
+import dev.ftb.mods.ftblibrary.ui.BaseScreen;
 import dev.ftb.mods.ftbteams.api.TeamRank;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.neoforged.neoforge.network.PacketDistributor;
-import com.troller2705.ftb_subchunks.ftb_subchunks;
-import com.troller2705.ftb_subchunks.data.SubGroupData;
 import com.troller2705.ftb_subchunks.data.SubZone;
-import com.troller2705.ftb_subchunks.network.SaveSubGroupPayload;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class SubGroupClientUI {
 
-    // THE MAGIC TOGGLE STATE
-    public static boolean isSubGroupMode = false;
+    public static SubZone activePaintbrush = null;
+    public static final Map<String, SubZone> BRUSH_PALETTE = new HashMap<>();
 
-    public static void openGUI(List<XZ> selectedChunks) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null) return;
+    public static void openPaletteMenu(Runnable returnToMap) {
+        new SubGroupListScreen(returnToMap).openGui();
+    }
 
-        // --- SAFEGUARD: Filter for Team-Owned Chunks Only ---
-        List<XZ> validChunks = new ArrayList<>();
-        for (XZ xz : selectedChunks) {
-            // FIX 1: Pass the dimension key instead of the level object
-            ChunkDimPos cdp = new ChunkDimPos(mc.level.dimension(), xz.x(), xz.z());
-            ClaimedChunk claimed = FTBChunksAPI.api().getManager().getChunk(cdp);
+    /**
+     * Opens the editor for a specific Sub-Group.
+     * @param returnToList The screen to go back to (the List Screen)
+     * @param returnToMap  The action to perform to return to the actual Chunk Map
+     */
+    public static void openBrushEditor(SubZone zone, BaseScreen returnToList, Runnable returnToMap) {
+        String originalName = zone.getName();
+        ConfigGroup mainGroup = new ConfigGroup("ftbsubchunks.brush_edit");
 
-            if (claimed != null && claimed.getTeamData() != null) {
-                // FIX 2: Check membership via TeamData
-                if (claimed.getTeamData().isTeamMember(mc.player.getUUID())) {
-                    validChunks.add(xz);
-                }
-            }
-        }
+        // The "Equip" toggle
+        final boolean[] equip = {false};
+        mainGroup.add("equip_brush", new BooleanConfig(), false, v -> equip[0] = v, false)
+                .setNameKey("Equip this Brush?");
 
-        if (validChunks.isEmpty()) {
-            mc.player.displayClientMessage(Component.literal("§cYou can only create Sub-Groups on land claimed by your team!"), true);
-            return;
-        }
-
-        // Proceed with validChunks instead of selectedChunks...
-        Screen parentScreen = mc.screen;
-        XZ firstChunk = validChunks.get(0);
-        LevelChunk chunk = mc.level.getChunkSource().getChunkNow(firstChunk.x(), firstChunk.z());
-        SubGroupData data = chunk != null ? chunk.getData(ftb_subchunks.SUBGROUP_ATTACHMENT) : new SubGroupData();
-
-        BlockPos pos = new BlockPos(firstChunk.x() * 16, mc.player.getBlockY(), firstChunk.z() * 16);
-        SubZone activeZone = data.getZones().isEmpty() ? null : data.getZones().get(0);
-
-        if (activeZone == null) {
-            activeZone = new SubZone("New Sub-Group", pos, pos.offset(15, 255, 15));
-        }
-        final SubZone finalZone = activeZone;
-
-        ConfigGroup mainGroup = new ConfigGroup("ftbsubgroups.manage");
-        StringConfig nameConfig = new StringConfig();
-        mainGroup.add("name", nameConfig, finalZone.getName(), finalZone::setName, "New Sub-Group");
+        // Permission settings
+        mainGroup.add("name", new StringConfig(), zone.getName(), zone::setName, "New Sub-Group");
 
         ConfigGroup permsGroup = mainGroup.getOrCreateSubgroup("permissions");
-        permsGroup.add("block_edit_rank", new EnumConfig<>(TeamRank.NAME_MAP), finalZone.getBlockEditRank(), finalZone::setBlockEditRank, TeamRank.MEMBER);
-        permsGroup.add("block_interact_rank", new EnumConfig<>(TeamRank.NAME_MAP), finalZone.getBlockInteractRank(), finalZone::setBlockInteractRank, TeamRank.ALLY);
-        permsGroup.add("entity_interact_rank", new EnumConfig<>(TeamRank.NAME_MAP), finalZone.getEntityInteractRank(), finalZone::setEntityInteractRank, TeamRank.ALLY);
+        permsGroup.add("block_edit_rank", new EnumConfig<>(TeamRank.NAME_MAP), zone.getBlockEditRank(), zone::setBlockEditRank, TeamRank.MEMBER);
+        permsGroup.add("block_interact_rank", new EnumConfig<>(TeamRank.NAME_MAP), zone.getBlockInteractRank(), zone::setBlockInteractRank, TeamRank.ALLY);
+        permsGroup.add("entity_interact_rank", new EnumConfig<>(TeamRank.NAME_MAP), zone.getEntityInteractRank(), zone::setEntityInteractRank, TeamRank.ALLY);
 
+        // EditConfigScreen creates a standard FTB property-style menu
         new EditConfigScreen(mainGroup) {
             @Override
             public void doAccept() {
                 super.doAccept();
 
-                // Pack the dragged chunks into a long array
-                long[] chunkArray = new long[selectedChunks.size()];
-                for (int i = 0; i < selectedChunks.size(); i++) {
-                    chunkArray[i] = ChunkPos.asLong(selectedChunks.get(i).x(), selectedChunks.get(i).z());
+                // Keep the palette updated
+                if (!originalName.equals(zone.getName())) {
+                    BRUSH_PALETTE.remove(originalName);
                 }
+                BRUSH_PALETTE.put(zone.getName(), zone);
 
-                PacketDistributor.sendToServer(new SaveSubGroupPayload(chunkArray, finalZone.save()));
-                Minecraft.getInstance().setScreen(parentScreen);
+                if (equip[0]) {
+                    // Equip the brush and jump straight back to the map to start painting
+                    activePaintbrush = new SubZone(zone.getName(), BlockPos.ZERO, BlockPos.ZERO);
+                    activePaintbrush.setBlockEditRank(zone.getBlockEditRank());
+                    activePaintbrush.setBlockInteractRank(zone.getBlockInteractRank());
+                    activePaintbrush.setEntityInteractRank(zone.getEntityInteractRank());
+
+                    Minecraft.getInstance().player.displayClientMessage(Component.literal("§e[Sub-Chunks] §aPaintbrush equipped: §6" + activePaintbrush.getName()), false);
+                    returnToMap.run();
+                } else {
+                    // Just save and go back to the selection list
+                    returnToList.openGui();
+                }
             }
 
             @Override
             public void doCancel() {
                 super.doCancel();
-                Minecraft.getInstance().setScreen(parentScreen);
+                returnToList.openGui();
             }
         }.openGui();
     }

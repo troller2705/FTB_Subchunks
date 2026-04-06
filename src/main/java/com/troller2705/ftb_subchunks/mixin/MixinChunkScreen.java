@@ -3,6 +3,7 @@ package com.troller2705.ftb_subchunks.mixin;
 import dev.ftb.mods.ftbchunks.client.gui.ChunkScreen;
 import dev.ftb.mods.ftblibrary.icon.Icons;
 import dev.ftb.mods.ftblibrary.ui.SimpleButton;
+import dev.ftb.mods.ftblibrary.util.TooltipList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,25 +14,33 @@ import com.troller2705.ftb_subchunks.client.SubGroupClientUI;
 
 @Mixin(value = ChunkScreen.class, remap = false)
 public abstract class MixinChunkScreen extends dev.ftb.mods.ftblibrary.ui.BaseScreen {
-    private SimpleButton subGroupToggleBtn;
 
     @Inject(method = "addWidgets", at = @At("TAIL"))
-    private void addSubGroupToggle(CallbackInfo ci) {
-        subGroupToggleBtn = new SimpleButton(this,
-                Component.literal("Sub-Group Mode: " + (SubGroupClientUI.isSubGroupMode ? "ON" : "OFF"))
-                        .withStyle(SubGroupClientUI.isSubGroupMode ? ChatFormatting.GREEN : ChatFormatting.RED),
-                Icons.SETTINGS,
-                (b, m) -> {
-                    SubGroupClientUI.isSubGroupMode = !SubGroupClientUI.isSubGroupMode; // Toggle it!
-                    b.setTitle(Component.literal("Sub-Group Mode: " + (SubGroupClientUI.isSubGroupMode ? "ON" : "OFF"))
-                            .withStyle(SubGroupClientUI.isSubGroupMode ? ChatFormatting.GREEN : ChatFormatting.RED));
-                });
-        add(subGroupToggleBtn);
-    }
+    private void addPaintbrushButton(CallbackInfo ci) {
+        SimpleButton paintbrushBtn = new SimpleButton(this, Component.empty(), Icons.SETTINGS, (btn, mb) -> {
+            if (mb.isRight()) {
+                SubGroupClientUI.activePaintbrush = null;
+                btn.playClickSound();
+            } else {
+                // FIX: Open the Palette List instead of the direct editor!
+                SubGroupClientUI.openPaletteMenu(this::openGui);
+            }
+        }) {
+            // NEW: Make the tooltip dynamic so you know exactly what mode you are in
+            @Override
+            public void addMouseOverText(dev.ftb.mods.ftblibrary.util.TooltipList list) {
+                list.add(Component.literal("Sub-Group Paintbrush").withStyle(ChatFormatting.GOLD));
+                if (SubGroupClientUI.activePaintbrush != null) {
+                    // FIX: Added .getName() since activePaintbrush is a SubZone object now
+                    list.add(Component.literal("Equipped: " + SubGroupClientUI.activePaintbrush.getName()).withStyle(ChatFormatting.GREEN));
+                    list.add(Component.literal("Right-Click to disable").withStyle(ChatFormatting.RED));
+                } else {
+                    list.add(Component.literal("Left-Click to equip").withStyle(ChatFormatting.GRAY));
+                }
+            }
+        };
 
-    @Inject(method = "alignWidgets", at = @At("TAIL"))
-    private void alignSubGroupToggle(CallbackInfo ci) {
-        // Place it right next to the Large Map button
-        subGroupToggleBtn.setPosAndSize(-getX() + 20, -getY() + 2, 115, 16);
+        paintbrushBtn.setPosAndSize(-getX() + 40, -getY() + 2, 16, 16);
+        add(paintbrushBtn);
     }
 }

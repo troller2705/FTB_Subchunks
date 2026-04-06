@@ -9,7 +9,6 @@ import java.util.Set;
 
 @Mixin(value = ChunkScreenPanel.class, remap = false)
 public interface ChunkScreenPanelAccessor {
-    // We only need access to the set to clear it
     @Accessor("selectedChunks")
     Set<XZ> getSelectedChunks();
 }

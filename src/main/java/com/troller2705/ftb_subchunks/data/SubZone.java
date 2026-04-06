@@ -51,7 +51,11 @@ public class SubZone {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
-    public boolean contains(BlockPos pos) { return bounds.contains(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5); }
+    public boolean contains(BlockPos pos) {
+        // For the map, we only care if the X and Z are within the chunk bounds
+        return pos.getX() >= bounds.minX && pos.getX() < bounds.maxX &&
+                pos.getZ() >= bounds.minZ && pos.getZ() < bounds.maxZ;
+    }
 
     // Getters & Setters for the UI
     public TeamRank getBlockEditRank() { return blockEditRank; }

@@ -24,6 +24,7 @@
 #F6678E minecraft:oxeye_daisy
 #AB1C58 minecraft:peony
 #AFAC0D minecraft:poppy
+#E6B35B minecraft:pumpkin
 #9C3ECB minecraft:rose_bush
 #86FC77 minecraft:sand
 #7E2654 minecraft:sandstone
