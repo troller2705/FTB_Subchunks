@@ -20,28 +20,7 @@ public class ftb_subchunks
 {
     public static final String MODID = "ftb_subchunks";
 
-    public static final DeferredRegister<AttachmentType<?>> ATTACHMENT_TYPES =
-            DeferredRegister.create(NeoForgeRegistries.Keys.ATTACHMENT_TYPES, MODID);
-
-    public static final Supplier<AttachmentType<SubGroupData>> SUBGROUP_ATTACHMENT = ATTACHMENT_TYPES.register(
-            "subgroup_data",
-            () -> AttachmentType.builder(() -> new SubGroupData())
-                    .serialize(new IAttachmentSerializer<CompoundTag, SubGroupData>() {
-                        @Override
-                        public SubGroupData read(IAttachmentHolder holder, CompoundTag tag, HolderLookup.Provider provider) {
-                            return new SubGroupData(tag);
-                        }
-
-                        @Override
-                        public CompoundTag write(SubGroupData attachment, HolderLookup.Provider provider) {
-                            return attachment.save();
-                        }
-                    })
-                    .build() // <--- Cleaned up!
-    );
-
     public ftb_subchunks(IEventBus modEventBus) {
-        ATTACHMENT_TYPES.register(modEventBus);
         NeoForge.EVENT_BUS.register(SubGroupEventHandler.class);
     }
 }

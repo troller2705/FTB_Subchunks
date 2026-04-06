@@ -10,6 +10,8 @@ import dev.ftb.mods.ftbteams.api.TeamRank;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.network.PacketDistributor; // NEW IMPORT
+import com.troller2705.ftb_subchunks.network.SaveSubGroupPayload; // NEW IMPORT
 import com.troller2705.ftb_subchunks.data.SubZone;
 
 import java.util.HashMap;
@@ -57,6 +59,10 @@ public class SubGroupClientUI {
                     BRUSH_PALETTE.remove(originalName);
                 }
                 BRUSH_PALETTE.put(zone.getName(), zone);
+
+                // --- CASCADE SYNC TRIGGER ---
+                // Send the updated brush to the server to cascade the new permissions to all painted chunks!
+                PacketDistributor.sendToServer(new SaveSubGroupPayload(new long[0], zone.save()));
 
                 if (equip[0]) {
                     // Equip the brush and jump straight back to the map to start painting

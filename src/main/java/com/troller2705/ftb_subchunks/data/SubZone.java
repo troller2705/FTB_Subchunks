@@ -29,11 +29,16 @@ public class SubZone {
                 tag.getDouble("MaxX"), tag.getDouble("MaxY"), tag.getDouble("MaxZ")
         );
 
-        try {
-            if (tag.contains("BlockEditRank")) this.blockEditRank = TeamRank.valueOf(tag.getString("BlockEditRank").toUpperCase());
-            if (tag.contains("BlockInteractRank")) this.blockInteractRank = TeamRank.valueOf(tag.getString("BlockInteractRank").toUpperCase());
-            if (tag.contains("EntityInteractRank")) this.entityInteractRank = TeamRank.valueOf(tag.getString("EntityInteractRank").toUpperCase());
-        } catch (Exception ignored) {}
+        // FIX 1: Isolate the Try-Catches so a single failure doesn't wipe the rest
+        if (tag.contains("BlockEditRank")) {
+            try { this.blockEditRank = TeamRank.valueOf(tag.getString("BlockEditRank")); } catch (Exception ignored) {}
+        }
+        if (tag.contains("BlockInteractRank")) {
+            try { this.blockInteractRank = TeamRank.valueOf(tag.getString("BlockInteractRank")); } catch (Exception ignored) {}
+        }
+        if (tag.contains("EntityInteractRank")) {
+            try { this.entityInteractRank = TeamRank.valueOf(tag.getString("EntityInteractRank")); } catch (Exception ignored) {}
+        }
     }
 
     public CompoundTag save() {
@@ -42,9 +47,10 @@ public class SubZone {
         tag.putDouble("MinX", bounds.minX); tag.putDouble("MinY", bounds.minY); tag.putDouble("MinZ", bounds.minZ);
         tag.putDouble("MaxX", bounds.maxX); tag.putDouble("MaxY", bounds.maxY); tag.putDouble("MaxZ", bounds.maxZ);
 
-        tag.putString("BlockEditRank", blockEditRank.getSerializedName());
-        tag.putString("BlockInteractRank", blockInteractRank.getSerializedName());
-        tag.putString("EntityInteractRank", entityInteractRank.getSerializedName());
+        // FIX 2: Use .name() to ensure it matches .valueOf() perfectly upon reloading
+        tag.putString("BlockEditRank", blockEditRank.name());
+        tag.putString("BlockInteractRank", blockInteractRank.name());
+        tag.putString("EntityInteractRank", entityInteractRank.name());
 
         return tag;
     }

@@ -3,7 +3,6 @@ package com.troller2705.ftb_subchunks.network;
 import com.troller2705.ftb_subchunks.api.ISubGroupMapChunk;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -13,9 +12,11 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import com.troller2705.ftb_subchunks.ftb_subchunks;
 import com.troller2705.ftb_subchunks.data.SubGroupData;
 import com.troller2705.ftb_subchunks.data.SubZone;
+import com.troller2705.ftb_subchunks.manager.SubGroupManager;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @EventBusSubscriber(modid = ftb_subchunks.MODID)
 public class NetworkHandler {
@@ -34,31 +35,51 @@ public class NetworkHandler {
                 SubZone incomingZone = new SubZone(payload.zoneData());
                 List<Long> successfullyPainted = new ArrayList<>();
 
-                for (long posLong : payload.chunks()) {
-                    ChunkPos pos = new ChunkPos(posLong);
+                dev.ftb.mods.ftbteams.api.Team team = dev.ftb.mods.ftbteams.api.FTBTeamsAPI.api().getManager().getTeamForPlayer(player).orElse(null);
 
-                    // FIX: Server-side check to prevent packet spoofing
-                    dev.ftb.mods.ftbchunks.api.ClaimedChunk claimed = dev.ftb.mods.ftbchunks.api.FTBChunksAPI.api().getManager().getChunk(new dev.ftb.mods.ftblibrary.math.ChunkDimPos(player.level().dimension(), pos.x, pos.z));
+                if (team != null) {
+                    SubGroupData teamData = SubGroupManager.getInstance().getDataForTeam(team.getId());
 
-                    if (claimed != null && claimed.getTeamData() != null && claimed.getTeamData().isTeamMember(player.getUUID())) {
-                        LevelChunk chunk = player.level().getChunk(pos.x, pos.z);
+                    // --- 1. THE CASCADE SYNC ---
+                    // Find every chunk that already has this SubGroup and overwrite it with the new permissions!
+                    boolean globalUpdate = false;
+                    for (Map.Entry<Long, SubZone> entry : teamData.getChunkZones().entrySet()) {
+                        if (entry.getValue().getName().equals(incomingZone.getName())) {
+                            entry.setValue(new SubZone(payload.zoneData()));
 
-                        SubGroupData data = chunk.getData(ftb_subchunks.SUBGROUP_ATTACHMENT);
-                        data.getZones().clear();
-                        data.addZone(incomingZone);
-
-                        chunk.setData(ftb_subchunks.SUBGROUP_ATTACHMENT, data);
-                        chunk.setUnsaved(true);
-
-                        successfullyPainted.add(posLong);
+                            // Add it to the array so the client map redraws it!
+                            if (!successfullyPainted.contains(entry.getKey())) {
+                                successfullyPainted.add(entry.getKey());
+                            }
+                            globalUpdate = true;
+                        }
                     }
-                }
 
-                // Only sync the chunks that actually passed the security check
-                if (!successfullyPainted.isEmpty()) {
-                    long[] syncArray = new long[successfullyPainted.size()];
-                    for(int i = 0; i < successfullyPainted.size(); i++) syncArray[i] = successfullyPainted.get(i);
-                    PacketDistributor.sendToAllPlayers(new SyncSubGroupsPayload(syncArray, incomingZone.save()));
+                    // --- 2. ADD BRAND NEW PAINTED CHUNKS ---
+                    for (long posLong : payload.chunks()) {
+                        ChunkPos pos = new ChunkPos(posLong);
+                        dev.ftb.mods.ftbchunks.api.ClaimedChunk claimed = dev.ftb.mods.ftbchunks.api.FTBChunksAPI.api().getManager().getChunk(new dev.ftb.mods.ftblibrary.math.ChunkDimPos(player.level().dimension(), pos.x, pos.z));
+
+                        if (claimed != null && claimed.getTeamData() != null && claimed.getTeamData().isTeamMember(player.getUUID())) {
+                            teamData.setChunkZone(posLong, incomingZone);
+                            if (!successfullyPainted.contains(posLong)) {
+                                successfullyPainted.add(posLong);
+                            }
+                        }
+                    }
+
+                    // --- 3. SEND THE UPDATE TO EVERYONE ---
+                    if (!successfullyPainted.isEmpty() || globalUpdate) {
+                        SubGroupManager.getInstance().save();
+
+                        long[] syncArray = new long[successfullyPainted.size()];
+                        for(int i = 0; i < successfullyPainted.size(); i++) syncArray[i] = successfullyPainted.get(i);
+
+                        net.minecraft.nbt.CompoundTag tag = incomingZone.save();
+                        tag.putString("OwnerTeamId", team.getId().toString());
+
+                        PacketDistributor.sendToAllPlayers(new SyncSubGroupsPayload(syncArray, tag));
+                    }
                 }
             }
         });
@@ -71,9 +92,13 @@ public class NetworkHandler {
             if (mc.level == null) return;
 
             SubZone incomingZone = new SubZone(payload.zoneData());
+            String ownerId = payload.zoneData().getString("OwnerTeamId");
+            dev.ftb.mods.ftbteams.api.Team myTeam = dev.ftb.mods.ftbteams.api.FTBTeamsAPI.api().getClientManager().selfTeam();
 
-            // NEW: Automatically add this brush to the Client Palette so they can equip it later!
-            com.troller2705.ftb_subchunks.client.SubGroupClientUI.BRUSH_PALETTE.putIfAbsent(incomingZone.getName(), incomingZone);
+            // Secure Palette check: Only add the brush if we own it
+            if (myTeam != null && !ownerId.isEmpty() && myTeam.getId().toString().equals(ownerId)) {
+                com.troller2705.ftb_subchunks.client.SubGroupClientUI.BRUSH_PALETTE.putIfAbsent(incomingZone.getName(), incomingZone);
+            }
 
             dev.ftb.mods.ftbchunks.client.map.MapManager manager = dev.ftb.mods.ftbchunks.client.map.MapManager.getInstance().orElse(null);
             if (manager == null) return;
@@ -83,20 +108,18 @@ public class NetworkHandler {
 
             for (long posLong : payload.chunks()) {
                 net.minecraft.world.level.ChunkPos pos = new net.minecraft.world.level.ChunkPos(posLong);
+                dev.ftb.mods.ftbchunks.client.map.MapRegion region = dimension.getRegion(dev.ftb.mods.ftblibrary.math.XZ.regionFromChunk(pos.x, pos.z));
 
-                // 1. Get FTB's exact MapChunk
-                dev.ftb.mods.ftbchunks.client.map.MapChunk mapChunk = dimension.getRegion(dev.ftb.mods.ftblibrary.math.XZ.regionFromChunk(pos.x, pos.z))
-                        .getDataBlocking().getChunk(dev.ftb.mods.ftblibrary.math.XZ.of(pos.x, pos.z));
+                if (region != null) {
+                    dev.ftb.mods.ftbchunks.client.map.MapChunk mapChunk = region.getDataBlocking().getChunk(dev.ftb.mods.ftblibrary.math.XZ.of(pos.x, pos.z));
 
-                if (mapChunk != null) {
-                    // 2. Safely cast it to our Duck-Typed interface and set the native data!
-                    if (mapChunk instanceof ISubGroupMapChunk subGroupChunk) {
+                    if (mapChunk != null && mapChunk instanceof ISubGroupMapChunk subGroupChunk) {
                         subGroupChunk.ftbsubchunks$setSubGroupName(incomingZone.getName());
+                        region.update(true); // Redraw map texture
                     }
                 }
             }
 
-            // Force redraw the Large Map if it is open
             if (mc.screen instanceof dev.ftb.mods.ftblibrary.ui.ScreenWrapper sw) {
                 if (sw.getGui() instanceof dev.ftb.mods.ftbchunks.client.gui.LargeMapScreen lms) {
                     lms.refreshWidgets();
