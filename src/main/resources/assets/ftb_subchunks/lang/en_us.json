@@ -1,5 +1,8 @@
 {
-  "itemGroup.ftb_subchunks": "Example Mod Tab",
-  "block.ftb_subchunks.example_block": "Example Block",
-  "item.ftb_subchunks.example_item": "Example Item"
+  "ftbsubchunks.brush_edit.name": "Sub-Claim Name",
+  "ftbsubchunks.brush_edit": "Sub-Claim Brush Editor",
+  "ftbsubchunks.brush_edit.permissions": "Permissions",
+  "ftbsubchunks.brush_edit.permissions.block_edit_rank": "Block Edit Rank",
+  "ftbsubchunks.brush_edit.permissions.block_interact_rank": "Block Interact Rank",
+  "ftbsubchunks.brush_edit.permissions.entity_interact_rank": "Entity Interact Rank"
 }
